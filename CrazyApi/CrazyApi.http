@@ -1,0 +1,34 @@
+@CrazyApi_HostAddress = https://localhost:7112
+
+GET {{CrazyApi_HostAddress}}/status/200
+Accept: application/json
+
+###
+GET {{CrazyApi_HostAddress}}/status/404
+Accept: application/json
+
+###
+POST {{CrazyApi_HostAddress}}/payload
+Content-Type: application/json
+
+{
+  "statusCode": 200,
+  "content": "Sergio",
+  "contentType": "application/json"
+}
+
+###
+POST {{CrazyApi_HostAddress}}/payload
+Content-Type: application/json
+
+{
+  "statusCode": 201,
+  "content": "{ 'name': 'Sergio', 'age': 48 }",
+  "contentType": "application/json"
+}
+
+###
+GET {{CrazyApi_HostAddress}}/delay/5
+
+###
+GET {{CrazyApi_HostAddress}}/fail
