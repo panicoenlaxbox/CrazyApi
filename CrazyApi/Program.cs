@@ -3,10 +3,65 @@ using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Diagnostics;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.AspNetCore.Extensions;
+using Microsoft.Extensions.Options;
+using System.Net.NetworkInformation;
+using Microsoft.ApplicationInsights.DependencyCollector;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// builder.Services.AddApplicationInsightsTelemetry((ApplicationInsightsServiceOptions configuration) =>
+// {
+//     Console.WriteLine($"AddAutoCollectedMetricExtractor {configuration.AddAutoCollectedMetricExtractor}");
+//     Console.WriteLine($"ApplicationVersion {configuration.ApplicationVersion}");
+//     Console.WriteLine($"ConnectionString {configuration.ConnectionString}");
+//     Console.WriteLine($"DependencyCollectionOptions.EnableLegacyCorrelationHeadersInjection {configuration.DependencyCollectionOptions.EnableLegacyCorrelationHeadersInjection}");
+//     Console.WriteLine($"DeveloperMode {configuration.DeveloperMode}");
+//     Console.WriteLine($"EnableActiveTelemetryConfigurationSetup {configuration.EnableActiveTelemetryConfigurationSetup}");
+//     Console.WriteLine($"EnableAdaptiveSampling {configuration.EnableAdaptiveSampling}");
+//     Console.WriteLine($"EnableAppServicesHeartbeatTelemetryModule {configuration.EnableAppServicesHeartbeatTelemetryModule}");
+//     Console.WriteLine($"EnableAuthenticationTrackingJavaScript {configuration.EnableAuthenticationTrackingJavaScript}");
+//     Console.WriteLine($"EnableAzureInstanceMetadataTelemetryModule {configuration.EnableAzureInstanceMetadataTelemetryModule}");
+//     Console.WriteLine($"EnableDebugLogger {configuration.EnableDebugLogger}");
+//     Console.WriteLine($"EnableDependencyTrackingTelemetryModule {configuration.EnableDependencyTrackingTelemetryModule}");
+//     Console.WriteLine($"EnableDiagnosticsTelemetryModule {configuration.EnableDiagnosticsTelemetryModule}");
+//     Console.WriteLine($"EnableEventCounterCollectionModule {configuration.EnableEventCounterCollectionModule}");
+//     Console.WriteLine($"EnableHeartbeat {configuration.EnableHeartbeat}");
+//     Console.WriteLine($"EnablePerformanceCounterCollectionModule {configuration.EnablePerformanceCounterCollectionModule}");
+//     Console.WriteLine($"EnableQuickPulseMetricStream {configuration.EnableQuickPulseMetricStream}");
+//     Console.WriteLine($"EnableRequestTrackingTelemetryModule {configuration.EnableRequestTrackingTelemetryModule}");
+//     Console.WriteLine($"EndpointAddress {configuration.EndpointAddress}");
+//     Console.WriteLine($"InstrumentationKey {configuration.InstrumentationKey}");
+//     Console.WriteLine($"RequestCollectionOptions.EnableW3CDistributedTracing {configuration.RequestCollectionOptions.EnableW3CDistributedTracing}");
+//     Console.WriteLine($"RequestCollectionOptions.InjectResponseHeaders {configuration.RequestCollectionOptions.InjectResponseHeaders}");
+//     Console.WriteLine($"RequestCollectionOptions.TrackExceptions {configuration.RequestCollectionOptions.TrackExceptions}");
+// });
+
+//https://learn.microsoft.com/en-us/azure/azure-monitor/app/sampling-classic-api#configure-sampling-settings
+// builder.Services.Configure<TelemetryConfiguration>(telemetryConfiguration =>
+// {
+//     var telemetryProcessorChainBuilder = telemetryConfiguration.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
+//
+//     telemetryProcessorChainBuilder.UseAdaptiveSampling(excludedTypes: "Dependency;Exception");
+//
+//     telemetryProcessorChainBuilder.Build();
+// });
+//
+// builder.Services.AddApplicationInsightsTelemetry(new ApplicationInsightsServiceOptions
+// {
+//     EnableAdaptiveSampling = false,
+// });
+
 builder.Services.AddApplicationInsightsTelemetry();
+
+builder.Services.ConfigureTelemetryModule<DependencyTrackingTelemetryModule>((DependencyTrackingTelemetryModule configModule, ApplicationInsightsServiceOptions serviceOptions) =>
+{
+    configModule.EnableSqlCommandTextInstrumentation = true;
+});
+
 builder.Services.AddApplicationInsightsTelemetryProcessor<SuccessfulDependencyFilter>();
 builder.Services.AddApplicationInsightsTelemetryProcessor<SyntheticRequestsDependencyFilter>();
 builder.Services.AddApplicationInsightsTelemetryProcessor<FastRemoteDependencyCallsFilter>();
@@ -23,21 +78,35 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
-app.MapGet("/status", (int? statusCode, ILogger<IApiMarker> logger, IConfiguration configuration) =>
-    {
-        var applicationInsightsLogLevelDefault = configuration["Logging:ApplicationInsights:LogLevel:Default"];
-        logger.LogInformation("Logging:ApplicationInsights:LogLevel:Default = {ApplicationInsightsLogLevelDefault}",
-            applicationInsightsLogLevelDefault);
 
-        statusCode ??= StatusCodes.Status200OK;
-        logger.LogTrace("Returning status code {StatusCode} with trace", statusCode);
-        logger.LogDebug("Returning status code {StatusCode} with debug", statusCode);
-        logger.LogInformation("Returning status code {StatusCode} with information", statusCode);
-        logger.LogWarning("Returning status code {StatusCode} with warning", statusCode);
-        logger.LogError("Returning status code {StatusCode} with error", statusCode);
-        logger.LogCritical("Returning status code {StatusCode} with critical", statusCode);
-        return Results.StatusCode((int)statusCode);
-    })
+app.MapGet("/status",
+        (int? statusCode, ILogger<IApiMarker> logger, IConfiguration configuration, TelemetryClient telemetryClient,
+            IOptions<ApplicationInsightsServiceOptions> options) =>
+        {
+            var applicationInsightsLogLevelDefault = configuration["Logging:ApplicationInsights:LogLevel:Default"];
+
+            statusCode ??= StatusCodes.Status200OK;
+
+            telemetryClient.TrackEvent("StatusRequested", new Dictionary<string, string>
+            {
+                { "StatusCode", statusCode.ToString()! }
+            });
+
+            logger.LogTrace("Returning status code {StatusCode} with trace, {applicationInsightsLogLevelDefault}",
+                statusCode, applicationInsightsLogLevelDefault);
+            logger.LogDebug("Returning status code {StatusCode} with debug, {applicationInsightsLogLevelDefault}",
+                statusCode, applicationInsightsLogLevelDefault);
+            logger.LogInformation(
+                "Returning status code {StatusCode} with information, {applicationInsightsLogLevelDefault}", statusCode,
+                applicationInsightsLogLevelDefault);
+            logger.LogWarning("Returning status code {StatusCode} with warning, {applicationInsightsLogLevelDefault}",
+                statusCode, applicationInsightsLogLevelDefault);
+            logger.LogError("Returning status code {StatusCode} with error, {applicationInsightsLogLevelDefault}",
+                statusCode, applicationInsightsLogLevelDefault);
+            logger.LogCritical("Returning status code {StatusCode} with critical, {applicationInsightsLogLevelDefault}",
+                statusCode, applicationInsightsLogLevelDefault);
+            return Results.StatusCode((int)statusCode);
+        })
     .WithName("GetStatus")
     .WithOpenApi();
 
@@ -77,12 +146,24 @@ app.MapGet("/cpu/{milliseconds:int}", (int milliseconds, CancellationToken cance
     .WithName("Cpu")
     .WithOpenApi();
 
-app.Logger.LogTrace("Trace");
-app.Logger.LogDebug("Debug");
-app.Logger.LogInformation("Information");
-app.Logger.LogWarning("Warning");
-app.Logger.LogError("Error");
-app.Logger.LogCritical("Critical");
+//using (app.Logger.BeginScope("panicoenlaxbox"))
+using (app.Logger.BeginScope(new Dictionary<string, object>
+       {
+           { "Nick", "panicoenlaxbox" },
+           { "Age", 48 }
+       }))
+{
+    app.Logger.LogTrace("Trace");
+    app.Logger.LogDebug("Debug");
+    app.Logger.LogInformation("Information");
+    app.Logger.LogWarning("Warning");
+    app.Logger.LogError("Error");
+    app.Logger.LogCritical("Critical");
+}
+
+
+// var path = Path.Combine(Directory.GetCurrentDirectory(), $"{Guid.NewGuid()}.txt");
+// await File.WriteAllTextAsync(path, app.Configuration["Logging:ApplicationInsights:LogLevel:Default"]);
 
 app.Run();
 
@@ -101,10 +182,6 @@ public class SuccessfulDependencyFilter(ITelemetryProcessor next) : ITelemetryPr
 {
     public void Process(ITelemetry item)
     {
-        // Microsoft.ApplicationInsights.DataContracts.TraceTelemetry
-        // Microsoft.ApplicationInsights.DataContracts.RequestTelemetry
-        // Microsoft.ApplicationInsights.DataContracts.DependencyTelemetry
-        // Microsoft.ApplicationInsights.DataContracts.MetricTelemetry
         if (item is DependencyTelemetry { Success: true })
         {
             return;
@@ -172,7 +249,7 @@ public class CustomPropertyTelemetryInitializer : ITelemetryInitializer
 {
     public void Initialize(ITelemetry telemetry)
     {
-        if(telemetry is ISupportProperties itemProperties)
+        if (telemetry is ISupportProperties itemProperties)
         {
             itemProperties.Properties.TryAdd("customProp", "customValue");
         }
